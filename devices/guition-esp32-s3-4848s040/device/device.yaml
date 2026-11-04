@@ -183,23 +183,15 @@ esphome:
             const uint8_t NEW_THRESHOLD  = 60;   
             // =========================================================================
 
-            // Bezpieczne przeszukanie zarejestrowanych komponentów w poszukiwaniu magistrali I2C
-            esphome::i2c::I2CBus *target_bus = nullptr;
-            for (auto *c : esphome::App.get_components()) {
-              // Sprawdzamy, czy komponent jest magistralą I2C próbując go rzutować
-              auto *b = dynamic_cast<esphome::i2c::I2CBus *>(c);
-              if (b != nullptr) {
-                target_bus = b;
-                break; // Znaleziono aktywną magistralę
-              }
-            }
+            // BEZPIECZNE POBRANIE MAGISTRALI: Pobieramy I2C bezpośrednio ze sterownika ekranu
+            auto *target_bus = id(my_touchscreen).get_bus();
 
             if (target_bus == nullptr) {
-              ESP_LOGE("gt911_init", "Nie odnaleziono aktywnej magistrali I2C w projekcie!");
+              ESP_LOGE("gt911_init", "Nie udało się pobrać magistrali I2C z komponentu dotykowego!");
               return;
             }
 
-            ESP_LOGI("gt911_init", "Natywna konfiguracja GT911 za pomocą odnalezionej magistrali...");
+            ESP_LOGI("gt911_init", "Pomyślnie powiązano magistralę. Konfiguracja rejestrów GT911...");
 
             // 1. Odczyt 186 bajtów konfiguracji (od 0x8047 do 0x8100)
             uint8_t config[186] = {0};
@@ -215,7 +207,7 @@ esphome:
               return;
             }
 
-            // 2. Modyfikacja progu czułości: indeks 17
+            // 2. Modyfikacja progu czułości: indeks 17 (0x8058 - 0x8047)
             config[17] = NEW_THRESHOLD;
 
             // 3. Wyliczenie sumy kontrolnej dla rejestru 0x80FF (indeks 184)
@@ -241,7 +233,7 @@ esphome:
 
             ESP_LOGI("gt911_init", "Zapisano czułość %d (Suma: 0x%02X)", NEW_THRESHOLD, checksum);
 
-            // 5. Wymuszenie re-kalibracji pojemnościowej
+            // 5. Wymuszenie re-kalibracji pojemnościowej (Reset zakłóceń)
             delay(10);
             uint8_t reset_cmd[3] = {0x80, 0x40, 0x04};
             if (target_bus->write(GT911_ADDR, reset_cmd, 3)) {
