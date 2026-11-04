@@ -173,75 +173,75 @@ esphome:
         - script.execute: apply_screen_rotation
         - script.execute: clock_bar_apply
 
-    - priority: -200.0  # Uruchomienie na samym końcu bootowania
+    - priority: -200.0
       then:
         - lambda: |-
             // =========================================================================
-            // CONFIGURATION
+            // KONFIGURACJA DLA GUITION 4848S040
             // =========================================================================
-            const uint8_t GT911_I2C_ADDR = 0x5D; 
-            const uint8_t NEW_THRESHOLD  = 60;   
+            const uint8_t GT911_ADDR     = 0x5D; // Adres GT911 w płytkach Guition
+            const uint8_t NEW_THRESHOLD  = 60;   // Podwyższony próg czułości (redukcja ghost touch)
             // =========================================================================
 
-            ESP_LOGI("gt911_init", "Rozpoczynanie bezpiecznej konfiguracji czułości GT911...");
+            // Wyszukanie aktywnego kontrolera I2C zarejestrowanego w rejestrze ESPHome
+            esphome::i2c::I2CBus *target_bus = nullptr;
+            for (auto *b : esphome::App.get_i2c_busses()) {
+              target_bus = b;
+              break;
+            }
 
-            // Pobieramy dostęp do magistrali za pomocą makra id() ESPHome.
-            // W szablonach Guition magistrala I2C prawie zawsze nazywa się 'i2c_bus'
-            auto *bus = &id(i2c_bus); 
-            if (bus == nullptr) {
-              ESP_LOGE("gt911_init", "Nie można uzyskać dostępu do i2c_bus!");
+            if (target_bus == nullptr) {
+              ESP_LOGE("gt911_init", "Nie odnaleziono magistrali I2C!");
               return;
             }
 
-            // 1. Odczytujemy aktualną konfigurację z układu (186 bajtów)
+            ESP_LOGI("gt911_init", "Rozpoczynanie konfiguracji rejestrów GT911...");
+
+            // 1. Odczyt 186 bajtów konfiguracji (od 0x8047 do 0x8100)
             uint8_t config[186] = {0};
             uint8_t reg_addr[2] = {0x80, 0x47};
-            
-            if (!bus->write(GT911_I2C_ADDR, reg_addr, 2)) {
+
+            if (!target_bus->write(GT911_ADDR, reg_addr, 2)) {
               ESP_LOGE("gt911_init", "Brak odpowiedzi od GT911 na I2C!");
               return;
             }
 
-            if (!bus->read(GT911_I2C_ADDR, config, 186)) {
-              ESP_LOGE("gt911_init", "Błąd podczas odczytu konfiguracji z GT911!");
+            if (!target_bus->read(GT911_ADDR, config, 186)) {
+              ESP_LOGE("gt911_init", "Błąd odczytu konfiguracji z GT911!");
               return;
             }
 
-            ESP_LOGD("gt911_init", "Pomyślnie odczytano profil konfiguracyjny.");
+            // 2. Modyfikacja progu czułości: 0x8058 - 0x8047 = indeks 17
+            config[17] = NEW_THRESHOLD;
 
-            // 2. Modyfikujemy rejestr Touch Threshold (0x8058 -> indeks 17)
-            config[17] = NEW_THRESHOLD; 
-
-            // 3. Obliczamy nową sumę kontrolną dla rejestru 0x80FF (indeks 184)
+            // 3. Wyliczenie sumy kontrolnej dla rejestru 0x80FF (indeks 184)
             uint8_t checksum = 0;
             for (int i = 0; i < 184; i++) {
               checksum += config[i];
             }
             checksum = (~checksum) + 1;
-            
-            config[184] = checksum; 
-            config[185] = 0x01;     // Flaga Config_Fresh dla rejestru 0x8100
 
-            // 4. Zapisujemy konfigurację (2 bajty adresu rejestru + 186 bajtów danych = 188 bajtów)
+            config[184] = checksum; // Zapis sumy kontrolnej
+            config[185] = 0x01;     // Flaga Config_Fresh (0x8100)
+
+            // 4. Zapis zmodyfikowanej konfiguracji (2 bajty adresu + 186 bajtów danych)
             uint8_t write_buffer[188];
             write_buffer[0] = 0x80;
             write_buffer[1] = 0x47;
             memcpy(&write_buffer[2], config, 186);
 
-            if (!bus->write(GT911_I2C_ADDR, write_buffer, 188)) {
-              ESP_LOGE("gt911_init", "Błąd podczas zapisu nowej konfiguracji!");
+            if (!target_bus->write(GT911_ADDR, write_buffer, 188)) {
+              ESP_LOGE("gt911_init", "Błąd zapisu nowej konfiguracji do GT911!");
               return;
             }
 
-            ESP_LOGI("gt911_init", "Nowy profil zapisany. Suma kontrolna: 0x%02X", checksum);
+            ESP_LOGI("gt911_init", "Zapisano czułość %d (Suma: 0x%02X)", NEW_THRESHOLD, checksum);
 
-            // 5. PROGRAMOWY RESET / WYMUSZENIE RE-KALIBRACJI
+            // 5. Wymuszenie re-kalibracji pojemnościowej (Reset zakłóceń)
             delay(10);
             uint8_t reset_cmd[3] = {0x80, 0x40, 0x04};
-            if (bus->write(GT911_I2C_ADDR, reset_cmd, 3)) {
-              ESP_LOGI("gt911_init", "Wymuszono programowy reset i kalibrację bazy matrycy dotykowej!");
-            } else {
-              ESP_LOGE("gt911_init", "Nie udało się wysłać komendy resetu.");
+            if (target_bus->write(GT911_ADDR, reset_cmd, 3)) {
+              ESP_LOGI("gt911_init", "Pomyślnie wymuszono re-kalibrację matrycy!");
             }
 
 # ---------------------------------------------------------------------------
