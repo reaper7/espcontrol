@@ -423,7 +423,7 @@ touchscreen:
       then:
         - lambda: |-
             // =========================================================================
-            // LOKALNE ZMIENNE STATYCZNE (100% bezpieczne dla kompilatora, bez globals)
+            // LOKALNE ZMIENNE STATYCZNE
             // =========================================================================
             static int buf_x[3] = {0, 0, 0};
             static int buf_y[3] = {0, 0, 0};
@@ -434,17 +434,16 @@ touchscreen:
             static bool touch_validated = false;
             static uint32_t last_touch_time = 0;
 
-            // CONFIGURATION
-            const int MAX_WIDTH   = 800;  
+            // CONFIGURATION - Dopasowane do Twojego ekranu 480x480 (Guition)
+            const int MAX_WIDTH   = 480;  
             const int MAX_HEIGHT  = 480;  
             const int DEADZONE    = 3;    
             const uint32_t MIN_DEBOUNCE_TIME = 40; 
-            const uint32_t RESET_TIMEOUT = 100; // Czas w ms bez dotyku uznawany za puszczenie ekranu
+            const uint32_t RESET_TIMEOUT = 100; 
 
             uint32_t now = millis();
 
-            // AUTOMATYCZNY RESET: Jeśli upłynęło zbyt dużo czasu od ostatniego dotknięcia,
-            // oznacza to, że ekran był puszczony (zastępuje on_release)
+            // AUTOMATYCZNY RESET
             if (now - last_touch_time > RESET_TIMEOUT) {
               sample_count = 0;
               out_x = 0;
@@ -456,8 +455,8 @@ touchscreen:
             }
             last_touch_time = now;
 
-            // KROK 1: Eliminacja skrajnych współrzędnych
-            if (touch.x < 0 || touch.x >= MAX_WIDTH || touch.y < 0 || touch.y >= MAX_HEIGHT) {
+            // KROK 1: Eliminacja skrajnych współrzędnych (poprawiona pod typ unsigned)
+            if (touch.x >= MAX_WIDTH || touch.y >= MAX_HEIGHT) {
               return;
             }
 
@@ -490,13 +489,20 @@ touchscreen:
             int med_x = get_median(buf_x[0], buf_x[1], buf_x[2]);
             int med_y = get_median(buf_y[0], buf_y[1], buf_y[2]);
 
-            // KROK 4: Strefa Nieczułości i wywołanie Twojego skryptu
+            // KROK 4: Strefa Nieczułości i modyfikacja obiektu touch przed wywołaniem skryptu
             if (abs(med_x - out_x) > DEADZONE || abs(med_y - out_y) > DEADZONE || sample_count == 3) {
               out_x = med_x;
               out_y = med_y;
               
-              // URUCHOMIENIE TWOJEGO SKRYPTU
-              id(cover_art_handle_touch).execute(out_x, out_y);
+              ESP_LOGI("touch_clean", "Czyste współrzędne -> X: %d, Y: %d", out_x, out_y);
+
+              // MODYFIKACJA STRUKTURY DOTYKU: 
+              // Podmieniamy wartości w locie, aby Twój skrypt otrzymał już przefiltrowane dane
+              touch.x = out_x;
+              touch.y = out_y;
+
+              // WYWOŁANIE TWOJEGO SKRYPTU (Działa bez przekazywania argumentów, dokładnie jak w oryginale!)
+              id(cover_art_handle_touch).execute();
             }
 
 # ---------------------------------------------------------------------------
