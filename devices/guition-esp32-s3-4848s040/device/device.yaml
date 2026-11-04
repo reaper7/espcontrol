@@ -179,30 +179,22 @@ esphome:
             // =========================================================================
             // KONFIGURACJA DLA GUITION 4848S040
             // =========================================================================
-            const uint8_t GT911_ADDR     = 0x5D; 
-            const uint8_t NEW_THRESHOLD  = 60;   
+            const uint8_t NEW_THRESHOLD  = 60;   // Podwyższony próg czułości (redukcja ghost touch)
             // =========================================================================
 
-            // BEZPIECZNE POBRANIE MAGISTRALI: Pobieramy I2C bezpośrednio ze sterownika ekranu
-            auto *target_bus = id(my_touchscreen).get_bus();
-
-            if (target_bus == nullptr) {
-              ESP_LOGE("gt911_init", "Nie udało się pobrać magistrali I2C z komponentu dotykowego!");
-              return;
-            }
-
-            ESP_LOGI("gt911_init", "Pomyślnie powiązano magistralę. Konfiguracja rejestrów GT911...");
+            ESP_LOGI("gt911_init", "Rozpoczynanie konfiguracji rejestrów GT911 przez obiekt urządzenia...");
 
             // 1. Odczyt 186 bajtów konfiguracji (od 0x8047 do 0x8100)
             uint8_t config[186] = {0};
             uint8_t reg_addr[2] = {0x80, 0x47};
 
-            if (!target_bus->write(GT911_ADDR, reg_addr, 2)) {
-              ESP_LOGE("gt911_init", "Brak odpowiedzi od GT911 na I2C!");
+            // id(my_touchscreen) sam udostępnia metody zapisu i odczytu I2C jako I2CDevice
+            if (!id(my_touchscreen).write(reg_addr, 2)) {
+              ESP_LOGE("gt911_init", "Brak odpowiedzi od GT911!");
               return;
             }
 
-            if (!target_bus->read(GT911_ADDR, config, 186)) {
+            if (!id(my_touchscreen).read(config, 186)) {
               ESP_LOGE("gt911_init", "Błąd odczytu konfiguracji z GT911!");
               return;
             }
@@ -220,14 +212,14 @@ esphome:
             config[184] = checksum; 
             config[185] = 0x01;     // Flaga Config_Fresh (0x8100)
 
-            // 4. Zapis zmodyfikowanej konfiguracji (2 bajty adresu + 186 bajtów danych)
+            // 4. Zapis zmodyfikowanej konfiguracji (2 bajty adresu + 186 bajtów danych = 188)
             uint8_t write_buffer[188];
             write_buffer[0] = 0x80;
             write_buffer[1] = 0x47;
             memcpy(&write_buffer[2], config, 186);
 
-            if (!target_bus->write(GT911_ADDR, write_buffer, 188)) {
-              ESP_LOGE("gt911_init", "Błąd zapisu nowej konfiguracji do GT911!");
+            if (!id(my_touchscreen).write(write_buffer, 188)) {
+              ESP_LOGE("gt911_init", "Błąd zapisu nowej konfiguracji!");
               return;
             }
 
@@ -236,7 +228,7 @@ esphome:
             // 5. Wymuszenie re-kalibracji pojemnościowej (Reset zakłóceń)
             delay(10);
             uint8_t reset_cmd[3] = {0x80, 0x40, 0x04};
-            if (target_bus->write(GT911_ADDR, reset_cmd, 3)) {
+            if (id(my_touchscreen).write(reset_cmd, 3)) {
               ESP_LOGI("gt911_init", "Pomyślnie wymuszono re-kalibrację matrycy!");
             }
 
