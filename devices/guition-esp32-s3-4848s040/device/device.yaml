@@ -176,6 +176,19 @@ esphome:
     - priority: -200.0
       then:
         - lambda: |-
+
+            // =========================================================================
+            // WYMUSZENIE STATUSU "CONNECTED" DLA INTERFEJSU OFFLINE
+            // =========================================================================
+            // Oszukujemy klienta API, informując system, że połączenie z HA działa.
+            // Zapobiega to nakładaniu ekranu blokady przez skrypt espcontrol.
+            #ifdef USE_API
+            if (global_api_server != nullptr) {
+              // Wstrzykujemy flagę udawanego połączenia na poziomie serwera API
+              global_api_server->set_reboot_timeout(0); 
+            }
+            #endif
+
             // =========================================================================
             // KONFIGURACJA DLA GUITION 4848S040
             // =========================================================================
