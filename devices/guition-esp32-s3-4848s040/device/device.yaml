@@ -495,10 +495,10 @@ touchscreen:
       then:
         - lambda: |-
             // =========================================================================
-            // LOKALNE ZMIENNE STATYCZNE
+            // LOKALNE ZMIENNE STATYCZNE (Poprawiona deklaracja rozmiaru tablic)
             // =========================================================================
-            static int buf_x = {0, 0, 0};
-            static int buf_y = {0, 0, 0};
+            static int buf_x[3] = {0, 0, 0};
+            static int buf_y[3] = {0, 0, 0};
             static int sample_count = 0;
             static int out_x = 0;
             static int out_y = 0;
@@ -518,22 +518,22 @@ touchscreen:
 
             // AUTOMATYCZNY RESET / WYBUDZENIE
             if (now - last_touch_time > RESET_TIMEOUT) {
-              // Nowość: Jeśli przerwa trwała dłużej niż WAKEUP_TIMEOUT (np. wygaszenie ekranu),
+              // Jeśli przerwa trwała dłużej niż WAKEUP_TIMEOUT (np. wygaszenie ekranu),
               // to omijamy filtr 40ms, ponieważ na zgaszonym ekranie nie ma ryzyka "ghost touch".
               // Wymuszamy natychmiastową walidację, by od razu wybudzić interfejs.
               if (now - last_touch_time > WAKEUP_TIMEOUT) {
                 touch_validated = true;
                 touch_start_time = now - MIN_DEBOUNCE_TIME; // Ominięcie opóźnienia startowego
                 sample_count = 3; // Wymuszenie gotowości bufora mediany
-                buf_x = buf_x = buf_x = touch.x;
-                buf_y = buf_y = buf_y = touch.y;
+                buf_x[0] = buf_x[1] = buf_x[2] = touch.x;
+                buf_y[0] = buf_y[1] = buf_y[2] = touch.y;
               } else {
                 // Standardowy reset dla krótkich przerw (ochrona przed ghost touch podczas pracy)
                 sample_count = 0;
                 out_x = 0;
                 out_y = 0;
-                buf_x = buf_x = buf_x = 0;
-                buf_y = buf_y = buf_y = 0;
+                buf_x[0] = buf_x[1] = buf_x[2] = 0;
+                buf_y[0] = buf_y[1] = buf_y[2] = 0;
                 touch_start_time = 0;
                 touch_validated = false;
               }
@@ -559,8 +559,8 @@ touchscreen:
             }
 
             // KROK 3: Zaawansowany Filtr Medianowy
-            buf_x = buf_x; buf_x = buf_x; buf_x = touch.x;
-            buf_y = buf_y; buf_y = buf_y; buf_y = touch.y;
+            buf_x[0] = buf_x[1]; buf_x[1] = buf_x[2]; buf_x[2] = touch.x;
+            buf_y[0] = buf_y[1]; buf_y[1] = buf_y[2]; buf_y[2] = touch.y;
             if (sample_count < 3) sample_count++;
 
             if (sample_count < 3) return; 
@@ -571,8 +571,8 @@ touchscreen:
               return c;
             };
 
-            int med_x = get_median(buf_x, buf_x, buf_x);
-            int med_y = get_median(buf_y, buf_y, buf_y);
+            int med_x = get_median(buf_x[0], buf_x[1], buf_x[2]);
+            int med_y = get_median(buf_y[0], buf_y[1], buf_y[2]);
 
             // KROK 4: Strefa Nieczułości i modyfikacja obiektu touch przed wywołaniem skryptu
             if (abs(med_x - out_x) > DEADZONE || abs(med_y - out_y) > DEADZONE || sample_count == 3) {
@@ -584,7 +584,7 @@ touchscreen:
               touch.y = out_y;
 
               // WYWOŁANIE SKRYPTU WYBUDZENIA / OBSŁUGI DOTYKU
-              id(cover_art_handle_touch).execute(); //
+              id(cover_art_handle_touch).execute(); 
             }
 
 # ---------------------------------------------------------------------------
