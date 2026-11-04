@@ -192,6 +192,36 @@ esphome:
             #endif
 
             // =========================================================================
+            // CAŁKOWITE DEZAKTYWOWANIE EKRANU BLOKADY "DISCONNECTED" W LVGL
+            // =========================================================================
+            // W ekosystemie espcontrol okno to tworzone jest jako obiekt LVGL. 
+            // Jeśli obiekt istnieje, nadpisujemy jego flagi, ukrywamy go i blokujemy automatyczne wywoływanie.
+
+            // =========================================================================
+            // OSTATECZNE WYSTRZELENIE EKRANU DISCONNECTED (BRUTE FORCE NA LVGL)
+            // =========================================================================
+            #ifdef USE_LVGL
+            // Jeśli obiekt ekranu odłączonego istnieje w rejestrze ESPHome, czyścimy jego
+            // strukturę graficzną. Nawet jeśli silnik spróbuje go załadować, 
+            // załaduje pusty, przezroczysty obiekt, pod którym nadal będzie widać główny pulpit.
+            if (id(home_assistant_disconnected) != nullptr) {
+              
+              // 1. Czyścimy wszystkie napisy ("Home Assistant disconnected", instrukcje)
+              lv_obj_clean(id(home_assistant_disconnected).get_obj());
+              
+              // 2. Czynimy go całkowicie przezroczystym i niewidocznym dla dotyku
+              lv_obj_set_style_bg_opa(id(home_assistant_disconnected).get_obj(), LV_OPA_TRANSP_FIX, 0);
+              lv_obj_clear_flag(id(home_assistant_disconnected).get_obj(), LV_OBJ_FLAG_CLICKABLE);
+              lv_obj_clear_flag(id(home_assistant_disconnected).get_obj(), LV_OBJ_FLAG_SCROLLABLE);
+              
+              // 3. Przenosimy go na najniższą możliwą warstwę, by fizycznie nie mógł zasłonić pulpitu
+              lv_obj_move_background(id(home_assistant_disconnected).get_obj());
+              
+              ESP_LOGI("local_override", "Ekran blokady HA offline został trwale zneutralizowany graficznie.");
+            }
+            #endif
+
+            // =========================================================================
             // KONFIGURACJA DLA GUITION 4848S040
             // =========================================================================
             const uint8_t NEW_THRESHOLD  = 60;   // Podwyższony próg czułości (redukcja ghost touch)
