@@ -235,28 +235,6 @@ esphome:
             }
 
 # ---------------------------------------------------------------------------
-
-interval:
-  - interval: 1s
-    then:
-      - lambda: |-
-          // Niskopoziomowe i bezpieczne dla parsera usuwanie ekranu blokady przez czyste LVGL
-          #ifdef USE_LVGL
-          // Pobieramy najwyższą warstwę (top layer), na której wyświetlane są alerty i pop-upy
-          lv_obj_t *top_layer = lv_layer_top();
-          if (top_layer != nullptr) {
-            // Czyścimy wszystkie elementy blokujące (teksty o braku komunikacji, okna modalne)
-            lv_obj_clean(top_layer);
-            
-            // POPRAWIONE: Używamy prawidłowej flagi LV_OPA_TRANSP dla pełnej przezroczystości
-            lv_obj_set_style_bg_opa(top_layer, LV_OPA_TRANSP, 0);
-            
-            // Wymuszamy, aby najwyższa warstwa nie przechwytywała kliknięć (dotyk przechodzi pod spód)
-            lv_obj_clear_flag(top_layer, LV_OBJ_FLAG_CLICKABLE);
-          }
-          #endif
-
-# ---------------------------------------------------------------------------
 # PSRAM (video frame buffer memory)
 # ---------------------------------------------------------------------------
 psram:
