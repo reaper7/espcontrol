@@ -5590,6 +5590,10 @@ async function assertClockBarEditorSmoke(page, posts, label) {
   await page
     .locator("#sp-clockbar-temperature-entity")
     .fill("sensor.porch_temperature");
+  const precision = page.locator("#sp-clockbar-temperature-precision");
+  assert.strictEqual(await precision.inputValue(), "0", label + ": precision defaults to whole numbers");
+  assert.deepStrictEqual(await precision.locator("option").allTextContents(), ["10", "10.2", "10.21"]);
+  await precision.selectOption("2");
   const degreeSymbolLabel = page.locator(
     'label[for="sp-clockbar-temperature-degree-symbol"]',
   );
@@ -5647,6 +5651,25 @@ async function assertClockBarEditorSmoke(page, posts, label) {
     .click({ force: true });
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   await page.waitForSelector(".sp-settings-overlay.sp-visible");
+  assert.strictEqual(await precision.inputValue(), "2", label + ": precision selection is retained");
+  assert.strictEqual(
+    await page.locator('[data-clockbar-item="temperature"] .sp-temp').textContent(),
+    "17.00",
+    label + ": preview uses two decimal places",
+  );
+  await waitForAnyPost(posts, [
+    { domain: "number", name: "Clock Bar: Temperature Precision", action: "set", value: "2" },
+    { domain: "number", name: "clock_bar__temperature_precision", action: "set", value: "2" },
+  ], label + ": saving posts precision", before);
+  for (const [option, expected] of [["1", "17.0"], ["0", "17"]]) {
+    await precision.selectOption(option);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    assert.strictEqual(await page.locator('[data-clockbar-item="temperature"] .sp-temp').textContent(), expected);
+    await page.locator('[data-clockbar-item="temperature"]').click({ force: true });
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.waitForSelector(".sp-settings-overlay.sp-visible");
+    assert.strictEqual(await precision.inputValue(), option, label + ": precision survives reopening");
+  }
   const modalHideButton = page.locator(".sp-settings-modal .sp-hide-btn");
   assert.strictEqual(
     await modalHideButton.count(),
@@ -7763,7 +7786,7 @@ async function assertS3ForecastEditorLayout(browser) {
     await page.waitForSelector(".sp-settings-overlay.sp-visible");
     const modeSelect = page.locator('[id$="weather-display"]');
     assert.deepStrictEqual(await modeSelect.locator('option').allTextContents(),
-      ["Air Pressure", "Current Conditions", "Forecast", "Humidity", "Rainfall", "Visibility", "Wind"]);
+      ["Air Pressure", "Current Conditions", "Forecast", "Humidity", "Rainfall", "Temperature", "Visibility", "Wind"]);
     assert.strictEqual(await modeSelect.inputValue(), "forecast");
     assert.strictEqual(await page.locator('[id$="weather-period"]').inputValue(), "daily");
     assert.deepStrictEqual(await page.locator('[id$="weather-period"] option').allTextContents(), ["Today", "Tomorrow", "Week"]);
@@ -8069,7 +8092,7 @@ async function assertRainfallEditor(browser) {
 
 async function assertWeatherReadingEditors(browser) {
   const slug = "guition-esp32-p4-jc1060p470";
-  for (const mode of ["pressure", "humidity", "visibility"]) {
+  for (const mode of ["pressure", "humidity", "visibility", "temperature"]) {
     const nativeState = nativeConfigState(slug);
     const sensor = "sensor." + mode;
     nativeState.document.buttons[1] = (mode === "visibility" ? "weather.home" : sensor) + ";;Auto;Auto;;;weather;" + mode;
@@ -8121,7 +8144,7 @@ async function assertWeatherReadingEditors(browser) {
       });
       assert.deepStrictEqual(styles.reading, styles.rain, mode + " matches Rainfall text styling");
       assert(styles.left >= 10 && styles.bottom >= 10, mode + " retains card padding");
-      assert.strictEqual(styles.text, mode === "pressure" ? "1013 hPa" : mode === "humidity" ? "65 %" : "10 km");
+      assert.strictEqual(styles.text, mode === "temperature" ? "18.5 °C" : mode === "pressure" ? "1013 hPa" : mode === "humidity" ? "65 %" : "10 km");
       await page.reload();
       await page.waitForSelector('#sp-app');
       await seedNativeDocument(page, nativeState);
@@ -8155,6 +8178,27 @@ async function assertWeatherReadingEditors(browser) {
   const browser = await (process.env.ESPCONTROL_BROWSER_ENGINE === "webkit" ? webkit : chromium).launch();
   const acceptanceOnly = process.env.ESPCONTROL_BROWSER_ACCEPTANCE_ONLY === "1";
   try {
+    if (process.env.ESPCONTROL_CLOCK_BAR_ONLY === "1") {
+      for (const testCase of ACTIVE_CASES) {
+        const context = await browser.newContext({ viewport: testCase.viewport });
+        await installRoutes(context, testCase.slug);
+        const page = await context.newPage();
+        const posts = [];
+        page.on("request", request => {
+          if (request.method() === "POST") posts.push(postRecord(request.url()));
+        });
+        await installFakeEventSource(page);
+        try {
+          await page.goto("http://espcontrol.test/" + testCase.slug + "?events=1", { waitUntil: "domcontentloaded" });
+          await page.waitForSelector("#sp-app");
+          await page.waitForFunction(() => window.__eventSources?.length > 0);
+          await page.evaluate(events => window.__seedEspState(events), seededEvents());
+          await assertClockBarEditorSmoke(page, posts, testCase.name);
+        } finally { await context.close(); }
+      }
+      console.log("Clock bar editor checks passed.");
+      return;
+    }
     if (process.env.ESPCONTROL_PIN_ONLY === "1") {
       await assertScreensaverPinSettings(browser);
       console.log("PIN settings browser checks passed.");
