@@ -408,8 +408,6 @@ touchscreen:
     id: my_touchscreen
     display: my_display
     update_interval: 32ms
-    # Use this panel's native coordinate range instead of the GT911's
-    # auto-detected limits (candidate fix for shifted touches in #2123).
     calibration:
       x_min: 0
       x_max: 480
@@ -418,13 +416,11 @@ touchscreen:
     transform:
       mirror_x: false
       mirror_y: false
-#    on_touch:
-#      - script.execute: cover_art_handle_touch
     on_touch:
       - if:
           condition:
             lambda: |-
-              // Flaga pomocnicza: domyślnie zakładamy, że dotyk jest poprawny
+              // Pomocnicza flaga logiczna
               bool touch_valid_flag = true;
 
               // =========================================================================
@@ -445,7 +441,7 @@ touchscreen:
               const int DEADZONE    = 3;    
               const uint32_t MIN_DEBOUNCE_TIME = 60; 
               const uint32_t RESET_TIMEOUT = 100; // Krótki zanik (szum)
-              const uint32_t WAKEUP_TIMEOUT = 2000; // Długa przerwa (ekran zgaszony) -> min. 2 sekundy
+              const uint32_t WAKEUP_TIMEOUT = 2000; // Długa przerwa (ekran zgaszony)
 
               uint32_t now = millis();
 
@@ -453,12 +449,11 @@ touchscreen:
               if (now - last_touch_time > RESET_TIMEOUT) {
                 if (now - last_touch_time > WAKEUP_TIMEOUT) {
                   touch_validated = true;
-                  touch_start_time = now - MIN_DEBOUNCE_TIME; // Ominięcie opóźnienia startowego
-                  sample_count = 3; // Wymuszenie gotowości bufora mediany
+                  touch_start_time = now - MIN_DEBOUNCE_TIME; 
+                  sample_count = 3; 
                   buf_x[0] = buf_x[1] = buf_x[2] = touch.x;
                   buf_y[0] = buf_y[1] = buf_y[2] = touch.y;
                 } else {
-                  // Standardowy reset dla krótkich przerw
                   sample_count = 0;
                   out_x = 0;
                   out_y = 0;
@@ -472,8 +467,8 @@ touchscreen:
 
               // KROK 1: Eliminacja skrajnych współrzędnych i ujemnych szumów
               if (touch.x <= 0 || touch.y <= 0 || touch.x >= MAX_WIDTH || touch.y >= MAX_HEIGHT) {
-                touch.state = esphome::touchscreen::STATUS_INVALID;
-                return false; // Kończy działanie lambdy i zwraca fałsz do instrukcji YAML 'if'
+                touch.status = esphome::touchscreen::STATUS_INVALID; // POPRAWIONE: .status zamiast .state
+                return false; 
               }
 
               // KROK 2: Timer eliminacji kliknięć krótszych niż oczekiwany debounce
@@ -483,7 +478,7 @@ touchscreen:
 
               if (!touch_validated) {
                 if (now - touch_start_time < MIN_DEBOUNCE_TIME) {
-                  touch.state = esphome::touchscreen::STATUS_INVALID;
+                  touch.status = esphome::touchscreen::STATUS_INVALID; // POPRAWIONE
                   return false; 
                 } else {
                   touch_validated = true;
@@ -496,7 +491,7 @@ touchscreen:
               if (sample_count < 3) sample_count++;
 
               if (sample_count < 3) {
-                touch.state = esphome::touchscreen::STATUS_INVALID;
+                touch.status = esphome::touchscreen::STATUS_INVALID; // POPRAWIONE
                 return false; 
               }
 
@@ -514,12 +509,19 @@ touchscreen:
                 out_x = med_x;
                 out_y = med_y;
                 
-                // Podmieniamy wartości w locie dla LVGL i skryptów
+                // Nadpisujemy parametry wejściowe lokalnej struktury lambdy
                 touch.x = out_x;
                 touch.y = out_y;
+                
+                // KLUCZOWA POPRAWKA: Nadpisujemy surowe współrzędne w pamięci globalnej 
+                // komponentu id(my_touchscreen), aby zewnętrzny skrypt YAML odczytał czyste dane!
+                auto touches = id(my_touchscreen).get_touches();
+                if (!touches.empty()) {
+                  touches[0].x = out_x;
+                  touches[0].y = out_y;
+                }
               } else {
-                // Jeśli dotyk mieści się w martwej strefie (brak zmian), oznaczamy go jako INVALID
-                touch.state = esphome::touchscreen::STATUS_INVALID;
+                touch.status = esphome::touchscreen::STATUS_INVALID; // POPRAWIONE
                 touch_valid_flag = false;
               }
 
@@ -528,14 +530,12 @@ touchscreen:
           then:
             # --- BLOK WYKONYWANY TYLKO DLA POPRAWNEGO DOTYKU ---
             - script.execute: cover_art_handle_touch
-            # Tutaj automatycznie wykonają się wszelkie skrypty z oryginalnego projektu EspControl
-            # np. - script.execute: refresh_display_timer
 
           else:
             # --- BLOK WYKONYWANY DLA DOTYKU OZNACZONEGO JAKO INVALID ---
-            # Pozostawiamy pusty lub logujemy zdarzenie w celach debugowania
+            # Zmieniamy na LOGW, aby upewnić się, czy widzisz odrzucanie w konsoli
             - lambda: |-
-                ESP_LOGD("touch_filter", "Dotyk odrzucony przez filtr sprzętowy");
+                ESP_LOGW("touch_filter", "Dotyk odrzucony przez filtr sprzętowy"
 
 # ---------------------------------------------------------------------------
 # Display (4" 480x480 MIPI RGB panel)
