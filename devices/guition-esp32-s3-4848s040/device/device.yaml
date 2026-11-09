@@ -440,8 +440,8 @@ touchscreen:
               const int MAX_HEIGHT  = 480;  
               const int DEADZONE    = 3;    
               const uint32_t MIN_DEBOUNCE_TIME = 60; 
-              const uint32_t RESET_TIMEOUT = 100; // Krótki zanik (szum)
-              const uint32_t WAKEUP_TIMEOUT = 2000; // Długa przerwa (ekran zgaszony)
+              const uint32_t RESET_TIMEOUT = 100; 
+              const uint32_t WAKEUP_TIMEOUT = 2000; 
 
               uint32_t now = millis();
 
@@ -467,7 +467,6 @@ touchscreen:
 
               // KROK 1: Eliminacja skrajnych współrzędnych i ujemnych szumów
               if (touch.x <= 0 || touch.y <= 0 || touch.x >= MAX_WIDTH || touch.y >= MAX_HEIGHT) {
-                touch.status = esphome::touchscreen::STATUS_INVALID; // POPRAWIONE: .status zamiast .state
                 return false; 
               }
 
@@ -478,7 +477,6 @@ touchscreen:
 
               if (!touch_validated) {
                 if (now - touch_start_time < MIN_DEBOUNCE_TIME) {
-                  touch.status = esphome::touchscreen::STATUS_INVALID; // POPRAWIONE
                   return false; 
                 } else {
                   touch_validated = true;
@@ -491,7 +489,6 @@ touchscreen:
               if (sample_count < 3) sample_count++;
 
               if (sample_count < 3) {
-                touch.status = esphome::touchscreen::STATUS_INVALID; // POPRAWIONE
                 return false; 
               }
 
@@ -509,19 +506,10 @@ touchscreen:
                 out_x = med_x;
                 out_y = med_y;
                 
-                // Nadpisujemy parametry wejściowe lokalnej struktury lambdy
+                // Modyfikujemy lokalną strukturę, którą mechanizm automatyzacji przesyła dalej
                 touch.x = out_x;
                 touch.y = out_y;
-                
-                // KLUCZOWA POPRAWKA: Nadpisujemy surowe współrzędne w pamięci globalnej 
-                // komponentu id(my_touchscreen), aby zewnętrzny skrypt YAML odczytał czyste dane!
-                auto touches = id(my_touchscreen).get_touches();
-                if (!touches.empty()) {
-                  touches[0].x = out_x;
-                  touches[0].y = out_y;
-                }
               } else {
-                touch.status = esphome::touchscreen::STATUS_INVALID; // POPRAWIONE
                 touch_valid_flag = false;
               }
 
@@ -533,9 +521,9 @@ touchscreen:
 
           else:
             # --- BLOK WYKONYWANY DLA DOTYKU OZNACZONEGO JAKO INVALID ---
-            # Zmieniamy na LOGW, aby upewnić się, czy widzisz odrzucanie w konsoli
+            # Poprawione domknięcie funkcji i nawiasów loggera
             - lambda: |-
-                ESP_LOGW("touch_filter", "Dotyk odrzucony przez filtr sprzętowy"
+                ESP_LOGW("touch_filter", "Dotyk odrzucony przez filtr sprzetowy");
 
 # ---------------------------------------------------------------------------
 # Display (4" 480x480 MIPI RGB panel)
