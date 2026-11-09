@@ -421,100 +421,121 @@ touchscreen:
 #    on_touch:
 #      - script.execute: cover_art_handle_touch
     on_touch:
-      then:
-        - lambda: |-
-            // =========================================================================
-            // LOKALNE ZMIENNE STATYCZNE (Poprawiona deklaracja rozmiaru tablic)
-            // =========================================================================
-            static int buf_x[3] = {0, 0, 0};
-            static int buf_y[3] = {0, 0, 0};
-            static int sample_count = 0;
-            static int out_x = 0;
-            static int out_y = 0;
-            static uint32_t touch_start_time = 0;
-            static bool touch_validated = false;
-            static uint32_t last_touch_time = 0;
+      - if:
+          condition:
+            lambda: |-
+              // Flaga pomocnicza: domyślnie zakładamy, że dotyk jest poprawny
+              bool touch_valid_flag = true;
 
-            // CONFIGURATION - Dopasowane do Twojego ekranu 480x480 (Guition)
-            const int MAX_WIDTH   = 480;  
-            const int MAX_HEIGHT  = 480;  
-            const int DEADZONE    = 3;    
-            const uint32_t MIN_DEBOUNCE_TIME = 60; 
-            const uint32_t RESET_TIMEOUT = 100; // Krótki zanik (szum)
-            const uint32_t WAKEUP_TIMEOUT = 2000; // Długa przerwa (ekran zgaszony) -> min. 2 sekundy
+              // =========================================================================
+              // LOKALNE ZMIENNE STATYCZNE
+              // =========================================================================
+              static int buf_x[3] = {0, 0, 0};
+              static int buf_y[3] = {0, 0, 0};
+              static int sample_count = 0;
+              static int out_x = 0;
+              static int out_y = 0;
+              static uint32_t touch_start_time = 0;
+              static bool touch_validated = false;
+              static uint32_t last_touch_time = 0;
 
-            uint32_t now = millis();
+              // CONFIGURATION - Dopasowane do Twojego ekranu 480x480 (Guition)
+              const int MAX_WIDTH   = 480;  
+              const int MAX_HEIGHT  = 480;  
+              const int DEADZONE    = 3;    
+              const uint32_t MIN_DEBOUNCE_TIME = 60; 
+              const uint32_t RESET_TIMEOUT = 100; // Krótki zanik (szum)
+              const uint32_t WAKEUP_TIMEOUT = 2000; // Długa przerwa (ekran zgaszony) -> min. 2 sekundy
 
-            // AUTOMATYCZNY RESET / WYBUDZENIE
-            if (now - last_touch_time > RESET_TIMEOUT) {
-              // Jeśli przerwa trwała dłużej niż WAKEUP_TIMEOUT (np. wygaszenie ekranu),
-              // to omijamy filtr 40ms, ponieważ na zgaszonym ekranie nie ma ryzyka "ghost touch".
-              // Wymuszamy natychmiastową walidację, by od razu wybudzić interfejs.
-              if (now - last_touch_time > WAKEUP_TIMEOUT) {
-                touch_validated = true;
-                touch_start_time = now - MIN_DEBOUNCE_TIME; // Ominięcie opóźnienia startowego
-                sample_count = 3; // Wymuszenie gotowości bufora mediany
-                buf_x[0] = buf_x[1] = buf_x[2] = touch.x;
-                buf_y[0] = buf_y[1] = buf_y[2] = touch.y;
-              } else {
-                // Standardowy reset dla krótkich przerw (ochrona przed ghost touch podczas pracy)
-                sample_count = 0;
-                out_x = 0;
-                out_y = 0;
-                buf_x[0] = buf_x[1] = buf_x[2] = 0;
-                buf_y[0] = buf_y[1] = buf_y[2] = 0;
-                touch_start_time = 0;
-                touch_validated = false;
+              uint32_t now = millis();
+
+              // AUTOMATYCZNY RESET / WYBUDZENIE
+              if (now - last_touch_time > RESET_TIMEOUT) {
+                if (now - last_touch_time > WAKEUP_TIMEOUT) {
+                  touch_validated = true;
+                  touch_start_time = now - MIN_DEBOUNCE_TIME; // Ominięcie opóźnienia startowego
+                  sample_count = 3; // Wymuszenie gotowości bufora mediany
+                  buf_x[0] = buf_x[1] = buf_x[2] = touch.x;
+                  buf_y[0] = buf_y[1] = buf_y[2] = touch.y;
+                } else {
+                  // Standardowy reset dla krótkich przerw
+                  sample_count = 0;
+                  out_x = 0;
+                  out_y = 0;
+                  buf_x[0] = buf_x[1] = buf_x[2] = 0;
+                  buf_y[0] = buf_y[1] = buf_y[2] = 0;
+                  touch_start_time = 0;
+                  touch_validated = false;
+                }
               }
-            }
-            last_touch_time = now;
+              last_touch_time = now;
 
-            // KROK 1: Eliminacja skrajnych współrzędnych
-            if (touch.x >= MAX_WIDTH || touch.y >= MAX_HEIGHT) {
-              return;
-            }
-
-            // KROK 2: Timer eliminacji kliknięć krótszych niż 40ms (dla normalnej pracy)
-            if (touch_start_time == 0) {
-              touch_start_time = now;
-            }
-
-            if (!touch_validated) {
-              if (now - touch_start_time < MIN_DEBOUNCE_TIME) {
-                return; 
-              } else {
-                touch_validated = true;
+              // KROK 1: Eliminacja skrajnych współrzędnych i ujemnych szumów
+              if (touch.x <= 0 || touch.y <= 0 || touch.x >= MAX_WIDTH || touch.y >= MAX_HEIGHT) {
+                touch.state = esphome::touchscreen::STATUS_INVALID;
+                return false; // Kończy działanie lambdy i zwraca fałsz do instrukcji YAML 'if'
               }
-            }
 
-            // KROK 3: Zaawansowany Filtr Medianowy
-            buf_x[0] = buf_x[1]; buf_x[1] = buf_x[2]; buf_x[2] = touch.x;
-            buf_y[0] = buf_y[1]; buf_y[1] = buf_y[2]; buf_y[2] = touch.y;
-            if (sample_count < 3) sample_count++;
+              // KROK 2: Timer eliminacji kliknięć krótszych niż oczekiwany debounce
+              if (touch_start_time == 0) {
+                touch_start_time = now;
+              }
 
-            if (sample_count < 3) return; 
+              if (!touch_validated) {
+                if (now - touch_start_time < MIN_DEBOUNCE_TIME) {
+                  touch.state = esphome::touchscreen::STATUS_INVALID;
+                  return false; 
+                } else {
+                  touch_validated = true;
+                }
+              }
 
-            auto get_median = [](int a, int b, int c) -> int {
-              if ((a <= b && b <= c) || (c <= b && b <= a)) return b;
-              if ((b <= a && a <= c) || (c <= a && a <= b)) return a;
-              return c;
-            };
+              // KROK 3: Zaawansowany Filtr Medianowy
+              buf_x[0] = buf_x[1]; buf_x[1] = buf_x[2]; buf_x[2] = touch.x;
+              buf_y[0] = buf_y[1]; buf_y[1] = buf_y[2]; buf_y[2] = touch.y;
+              if (sample_count < 3) sample_count++;
 
-            int med_x = get_median(buf_x[0], buf_x[1], buf_x[2]);
-            int med_y = get_median(buf_y[0], buf_y[1], buf_y[2]);
+              if (sample_count < 3) {
+                touch.state = esphome::touchscreen::STATUS_INVALID;
+                return false; 
+              }
 
-            // KROK 4: Strefa Nieczułości i modyfikacja obiektu touch przed wywołaniem skryptu
-            if (abs(med_x - out_x) > DEADZONE || abs(med_y - out_y) > DEADZONE || sample_count == 3) {
-              out_x = med_x;
-              out_y = med_y;
-              
-              // Podmieniamy wartości w locie dla skryptu espcontrol
-              touch.x = out_x;
-              touch.y = out_y;
+              auto get_median = [](int a, int b, int c) -> int {
+                if ((a <= b && b <= c) || (c <= b && b <= a)) return b;
+                if ((b <= a && a <= c) || (c <= a && a <= b)) return a;
+                return c;
+              };
 
-              // WYWOŁANIE SKRYPTU WYBUDZENIA / OBSŁUGI DOTYKU
-              id(cover_art_handle_touch).execute(); 
-            }
+              int med_x = get_median(buf_x[0], buf_x[1], buf_x[2]);
+              int med_y = get_median(buf_y[0], buf_y[1], buf_y[2]);
+
+              // KROK 4: Strefa Nieczułości
+              if (abs(med_x - out_x) > DEADZONE || abs(med_y - out_y) > DEADZONE || sample_count == 3) {
+                out_x = med_x;
+                out_y = med_y;
+                
+                // Podmieniamy wartości w locie dla LVGL i skryptów
+                touch.x = out_x;
+                touch.y = out_y;
+              } else {
+                // Jeśli dotyk mieści się w martwej strefie (brak zmian), oznaczamy go jako INVALID
+                touch.state = esphome::touchscreen::STATUS_INVALID;
+                touch_valid_flag = false;
+              }
+
+              return touch_valid_flag;
+          
+          then:
+            # --- BLOK WYKONYWANY TYLKO DLA POPRAWNEGO DOTYKU ---
+            - script.execute: cover_art_handle_touch
+            # Tutaj automatycznie wykonają się wszelkie skrypty z oryginalnego projektu EspControl
+            # np. - script.execute: refresh_display_timer
+
+          else:
+            # --- BLOK WYKONYWANY DLA DOTYKU OZNACZONEGO JAKO INVALID ---
+            # Pozostawiamy pusty lub logujemy zdarzenie w celach debugowania
+            - lambda: |-
+                ESP_LOGD("touch_filter", "Dotyk odrzucony przez filtr sprzętowy");
 
 # ---------------------------------------------------------------------------
 # Display (4" 480x480 MIPI RGB panel)
