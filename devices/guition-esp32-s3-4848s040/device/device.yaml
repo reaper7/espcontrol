@@ -470,6 +470,7 @@ touchscreen:
 
               // STEP 1: Bounds check and negative noise elimination
               if (touch.x <= 0 || touch.y <= 0 || touch.x >= MAX_WIDTH || touch.y >= MAX_HEIGHT) {
+                touch.state = 0;
                 return false; 
               }
 
@@ -480,6 +481,7 @@ touchscreen:
 
               if (!touch_validated) {
                 if (now - touch_start_time < MIN_DEBOUNCE_TIME) {
+                  touch.state = 0;
                   return false; 
                 } else {
                   touch_validated = true;
@@ -492,6 +494,7 @@ touchscreen:
               if (sample_count < 3) sample_count++;
 
               if (sample_count < 3) {
+                touch.state = 0;
                 return false; 
               }
 
@@ -513,6 +516,7 @@ touchscreen:
                 touch.x = out_x;
                 touch.y = out_y;
               } else {
+                touch.state = 0;
                 touch_valid_flag = false;
               }
 
