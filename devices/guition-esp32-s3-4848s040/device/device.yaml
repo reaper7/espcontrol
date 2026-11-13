@@ -537,7 +537,7 @@ touchscreen:
           else:
             # --- BLOCK EXECUTED FOR TOUCH EVENTS MARKED AS INVALID ---
             - lambda: |-
-                ESP_LOGE("touch_filter", "Touch rejected by hardware filter (x: %d, y: %d, state: %d)", raw_x, raw_y, raw_state);
+                ESP_LOGE("touch_filter", "Touch rejected by software filter (x: %d, y: %d, state: %d)", raw_x, raw_y, raw_state);
 
 # ---------------------------------------------------------------------------
 # Display (4" 480x480 MIPI RGB panel)
