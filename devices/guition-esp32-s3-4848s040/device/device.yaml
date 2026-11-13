@@ -428,6 +428,14 @@ touchscreen:
               // =========================================================================
               // LOCAL STATIC VARIABLES
               // =========================================================================
+              static int raw_x = 0;
+              static int raw_y = 0;
+              static int raw_state = 0;
+
+              raw_x = touch.x;
+              raw_y = touch.y;
+              raw_state = touch.state;
+
               static int buf_x[3] = {0, 0, 0};
               static int buf_y[3] = {0, 0, 0};
               static int sample_count = 0;
@@ -529,7 +537,7 @@ touchscreen:
           else:
             # --- BLOCK EXECUTED FOR TOUCH EVENTS MARKED AS INVALID ---
             - lambda: |-
-                ESP_LOGE("touch_filter", "Touch rejected by hardware filter");
+                ESP_LOGE("touch_filter", "Touch rejected by hardware filter (x: %d, y: %d, state: %d)", raw_x, raw_y, raw_state);
 
 # ---------------------------------------------------------------------------
 # Display (4" 480x480 MIPI RGB panel)
